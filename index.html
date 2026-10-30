@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mock WSL Terminal</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- html2canvas for image generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <style>
+        /* Custom Scrollbar for Terminal */
+        #terminal-screen::-webkit-scrollbar {
+            width: 8px;
+        }
+        #terminal-screen::-webkit-scrollbar-track {
+            background: #0c0c0c; 
+        }
+        #terminal-screen::-webkit-scrollbar-thumb {
+            background: #555; 
+            border-radius: 4px;
+        }
+        #terminal-screen::-webkit-scrollbar-thumb:hover {
+            background: #888; 
+        }
+        
+        /* Font for Terminal */
+        .font-mono {
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        /* Styling for rendering outputs with newlines */
+        .output-text {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        /* Blinking cursor */
+        .terminal-cursor {
+            display: inline-block;
+            width: 8px;
+            height: 15px;
+            background-color: #d1d5db; /* Tailwind gray-300 */
+            animation: blink 1s step-end infinite;
+            vertical-align: text-bottom;
+            margin-left: 2px;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white h-screen flex flex-col p-4">
+
+    <!-- Top Toolbar -->
+    <div class="flex space-x-2 mb-2" id="toolbar">
+        <button onclick="downloadImage()" class="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded text-sm transition" title="Download PNG">
+            <i class="fa-solid fa-camera"></i>
+        </button>
+        <button onclick="copyTerminalText()" class="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded text-sm transition" title="Copy Text">
+            <i class="fa-solid fa-copy"></i>
+        </button>
+        <button onclick="toggleFullScreen()" class="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded text-sm transition" title="Toggle Fullscreen">
+            <i class="fa-solid fa-expand"></i>
+        </button>
+        <button onclick="clearTerminal()" class="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded text-sm transition" title="Clear Terminal">
+            <i class="fa-solid fa-trash"></i>
+        </button>
+    </div>
+
+    <!-- Main Layout -->
+    <div class="flex flex-col lg:flex-row flex-1 gap-4 min-h-0">
+        
+        <!-- Terminal Display Area -->
+        <div id="terminal-wrapper" class="flex-1 flex flex-col bg-[#0c0c0c] rounded-lg border border-gray-700 overflow-hidden shadow-2xl relative">
+            
+            <!-- CHANGE 1: Windows Terminal Style Top Bar -->
+            <div class="bg-[#202020] flex items-stretch justify-between text-xs text-gray-300 font-sans select-none border-b border-[#111] h-9">
+                <!-- Left side: Tab -->
+                <div class="flex items-center bg-[#0c0c0c] pr-2 pl-3 border-r border-[#111] w-full max-w-lg overflow-hidden relative">
+                    <!-- Tab Icon -->
+                    <div class="border border-gray-400 rounded-sm w-4 h-4 flex items-center justify-center mr-2 shrink-0">
+                        <span class="text-[9px] font-bold text-gray-300">C:\</span>
+                    </div>
+                    
+                    <!-- Customizable Path -->
+                    <input type="text" id="terminal-path" value="C:\Program Files\WSL\wsl.exe" class="bg-transparent border-none outline-none text-gray-200 w-full focus:ring-0 p-0 text-[13px] tracking-wide" spellcheck="false" autocomplete="off">
+                    
+                    <!-- Close Tab Button -->
+                    <button class="ml-2 hover:bg-[#333] p-1.5 rounded transition shrink-0"><i class="fa-solid fa-xmark text-[11px] text-gray-400"></i></button>
+                    
+                    <!-- Tab Divider & Add/Dropdown -->
+                    <div class="w-px h-4 bg-[#333] mx-1 shrink-0"></div>
+                    <button class="hover:bg-[#333] p-1.5 rounded transition shrink-0"><i class="fa-solid fa-plus text-[11px] text-gray-400"></i></button>
+                    <button class="hover:bg-[#333] p-1.5 rounded transition shrink-0"><i class="fa-solid fa-chevron-down text-[10px] text-gray-400"></i></button>
+                </div>
+                
+                <!-- Right side: Window Controls -->
+                <div class="flex items-center h-full">
+                    <button class="hover:bg-[#333] px-4 h-full flex items-center justify-center transition"><i class="fa-solid fa-minus text-[10px]"></i></button>
+                    <button class="hover:bg-[#333] px-4 h-full flex items-center justify-center transition"><i class="fa-regular fa-square text-[10px]"></i></button>
+                    <button class="hover:bg-red-600 px-4 h-full flex items-center justify-center transition"><i class="fa-solid fa-xmark text-[12px]"></i></button>
+                </div>
+            </div>
+            
+            <!-- Actual Terminal Screen (Captured for Image) -->
+            <div id="terminal-screen" class="flex-1 p-4 overflow-y-auto font-mono text-sm text-gray-200 leading-relaxed">
+                <!-- Terminal content will be injected here -->
+            </div>
+        </div>
+
+        <!-- Control Panel / Form Area -->
+        <div class="w-full lg:w-96 bg-gray-800 rounded-lg p-4 flex flex-col max-h-screen lg:max-h-full overflow-y-auto border border-gray-700">
+            <h2 class="text-lg font-bold mb-4 text-gray-200">Configure Terminal</h2>
+            
+            <!-- User & Host -->
+            <div class="flex gap-2 mb-4">
+                <div class="flex-1">
+                    <label class="block text-xs text-gray-400 mb-1">Username</label>
+                    <input type="text" id="username" value="user" class="w-full bg-gray-900 text-white border border-gray-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-500">
+                </div>
+                <div class="flex-1">
+                    <label class="block text-xs text-gray-400 mb-1">Hostname</label>
+                    <input type="text" id="hostname" value="localhost" class="w-full bg-gray-900 text-white border border-gray-700 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+
+            <!-- Dynamic Command List -->
+            <div id="commands-container" class="flex-1 space-y-3 mb-4">
+                <!-- Rows will be added here via JS -->
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="space-y-2 mt-auto pt-4 border-t border-gray-700">
+                <button onclick="addCommandRow()" class="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded text-sm transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-plus"></i> Add Command
+                </button>
+                <button onclick="renderTerminal()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded text-sm transition shadow-lg">
+                    Enter / Generate
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Add one default row to start with
+            addCommandRow('ls --help', 'BusyBox v1.36.1 (2024-05-21 13:38:37 UTC) multi-call binary.\nUsage: ls [-1AaCxdLHRFplinshrSXvctu] [-w WIDTH] [FILE]...\n\nList directory contents');
+            // Initial render
+            renderTerminal();
+        });
+
+        // --- Dynamic Form Logic ---
+        function addCommandRow(cmd = '', out = '') {
+            const container = document.getElementById('commands-container');
+            const rowId = 'row-' + Date.now() + Math.random().toString(36).substr(2, 9);
+            
+            const row = document.createElement('div');
+            row.id = rowId;
+            row.className = 'bg-gray-900 p-3 rounded border border-gray-700 relative';
+            
+            row.innerHTML = `
+                <button onclick="removeCommandRow('${rowId}')" class="absolute top-2 right-2 text-gray-500 hover:text-red-500 transition" title="Remove">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+                <div class="mb-2">
+                    <label class="block text-xs text-gray-400 mb-1">Command</label>
+                    <input type="text" class="cmd-input w-full bg-gray-800 text-green-400 border border-gray-700 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-blue-500" value="${cmd.replace(/"/g, '&quot;')}">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Output (Leave empty for no output)</label>
+                    <textarea class="out-input w-full bg-gray-800 text-gray-300 border border-gray-700 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-blue-500 h-16 resize-y">${out.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                </div>
+            `;
+            container.appendChild(row);
+        }
+
+        function removeCommandRow(rowId) {
+            const row = document.getElementById(rowId);
+            if (row) row.remove();
+        }
+
+        // --- Terminal Rendering Logic ---
+        function renderTerminal() {
+            const screen = document.getElementById('terminal-screen');
+            const username = document.getElementById('username').value || 'user';
+            const hostname = document.getElementById('hostname').value || 'localhost';
+            
+            screen.innerHTML = ''; // Clear current screen
+            
+            const rows = document.querySelectorAll('#commands-container > div');
+
+            rows.forEach(row => {
+                const cmdInput = row.querySelector('.cmd-input').value;
+                const outInput = row.querySelector('.out-input').value;
+
+                // If command is empty, skip
+                if (!cmdInput.trim()) return;
+
+                // Create Prompt Line
+                const promptLine = document.createElement('div');
+                promptLine.className = 'mb-1';
+                promptLine.innerHTML = `<span class="text-green-400 font-bold">${username}@${hostname}</span>:<span class="text-blue-400">~</span># ${cmdInput}`;
+                screen.appendChild(promptLine);
+
+                // Create Output Line (if exists)
+                if (outInput.trim()) {
+                    const outputLine = document.createElement('div');
+                    outputLine.className = 'mb-3 text-gray-300 output-text';
+                    outputLine.textContent = outInput; // Using textContent automatically handles < and >
+                    screen.appendChild(outputLine);
+                }
+            });
+
+            // CHANGE 2: Add fresh trailing prompt with empty cursor at the very end
+            const trailingPrompt = document.createElement('div');
+            trailingPrompt.className = 'mt-1 flex items-center';
+            trailingPrompt.innerHTML = `<span class="text-green-400 font-bold">${username}@${hostname}</span>:<span class="text-blue-400">~</span>#&nbsp;<span class="terminal-cursor"></span>`;
+            screen.appendChild(trailingPrompt);
+
+            // Scroll to bottom
+            screen.scrollTop = screen.scrollHeight;
+        }
+
+        // --- Action Buttons ---
+
+        function clearTerminal() {
+            document.getElementById('terminal-screen').innerHTML = '';
+            renderTerminal(); // Re-render to show the default empty prompt
+        }
+
+        async function copyTerminalText() {
+            const screen = document.getElementById('terminal-screen');
+            try {
+                await navigator.clipboard.writeText(screen.innerText);
+                alert('Terminal text copied to clipboard!');
+            } catch (err) {
+                alert('Failed to copy text.');
+            }
+        }
+
+        function toggleFullScreen() {
+            const terminal = document.getElementById('terminal-wrapper');
+            if (!document.fullscreenElement) {
+                if (terminal.requestFullscreen) {
+                    terminal.requestFullscreen();
+                } else if (terminal.mozRequestFullScreen) { // Firefox
+                    terminal.mozRequestFullScreen();
+                } else if (terminal.webkitRequestFullscreen) { // Chrome, Safari and Opera
+                    terminal.webkitRequestFullscreen();
+                } else if (terminal.msRequestFullscreen) { // IE/Edge
+                    terminal.msRequestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        function downloadImage() {
+            const terminal = document.getElementById('terminal-screen');
+            const wrapper = document.getElementById('terminal-wrapper');
+            
+            // Temporarily hide scrollbar for the screenshot
+            const originalOverflow = terminal.style.overflow;
+            terminal.style.overflow = 'hidden';
+
+            // Use html2canvas to capture the terminal element
+            html2canvas(wrapper, {
+                backgroundColor: '#0c0c0c', // Match terminal background
+                scale: 2, // Higher resolution
+                useCORS: true
+            }).then(canvas => {
+                // Restore scrollbar
+                terminal.style.overflow = originalOverflow;
+
+                // Create download link
+                const link = document.createElement('a');
+                link.download = 'wsl-terminal-screenshot.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            }).catch(err => {
+                console.error('Error generating image:', err);
+                terminal.style.overflow = originalOverflow;
+                alert('Failed to generate image.');
+            });
+        }
+    </script>
+</body>
+</html>
