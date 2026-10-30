@@ -1,5 +1,6 @@
 # mock-terminal
-mock WSL terminal
+mimics a WSL/Ubuntu terminal
+cheat on ypur os assignment - you didnt hear it from me!
 ## Current features
 ### username and hostname can be customised
 ### PNG images can be download for easy use
